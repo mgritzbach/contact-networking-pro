@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,21 +31,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.antigravity.contactnetworkingpro.model.ContactDraft
+import com.antigravity.contactnetworkingpro.model.PanelConfig
 import com.antigravity.contactnetworkingpro.ui.theme.*
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 
-private enum class QrPanel { CONTACT, LINKEDIN, WHATSAPP }
-
 @Composable
 fun HomeScreen(
+    panels: List<PanelConfig>,
     savedContact: ContactDraft,
-    savedLinkedinUri: String,
-    savedWhatsappUri: String,
+    savedUris: Map<String, String>,
     onEditClick: () -> Unit
 ) {
-    var selectedPanel by remember { mutableStateOf(QrPanel.CONTACT) }
+    var selectedId by remember(panels) { mutableStateOf(panels.first().id) }
 
     val contactQr = remember(savedContact) {
         if (savedContact.fullName.isBlank() && savedContact.phone.isBlank() && savedContact.email.isBlank()) null
@@ -58,17 +58,11 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 100.dp)
         ) {
-            // Copper top accent bar
             Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(Copper))
 
-            // Header
             Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp)) {
-                Text(
-                    text = "CONTACT NETWORKING PRO",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Copper
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("CONTACT NETWORKING PRO", style = MaterialTheme.typography.titleMedium, color = Copper)
+                Spacer(Modifier.height(12.dp))
                 if (savedContact.fullName.isNotBlank()) {
                     Text(
                         text = savedContact.fullName,
@@ -78,7 +72,7 @@ fun HomeScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     if (savedContact.jobTitle.isNotBlank() || savedContact.company.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             text = listOf(savedContact.jobTitle, savedContact.company)
                                 .filter { it.isNotBlank() }.joinToString(" · "),
@@ -87,53 +81,35 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    Text(
-                        text = "Share Your\nIdentity",
-                        style = MaterialTheme.typography.displayMedium,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Professional networking, elevated.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                    Text("Share Your\nIdentity", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Professional networking, elevated.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+            }
+
+            // Dynamic panel tabs — scrollable row if count > 3
+            val tabModifier = if (panels.size > 3)
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp).horizontalScroll(rememberScrollState())
+            else
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+
+            Row(modifier = tabModifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                panels.forEach { panel ->
+                    val weight = if (panels.size <= 3) Modifier.weight(1f) else Modifier.width(96.dp)
+                    PanelTab(
+                        modifier   = weight,
+                        label      = panel.label,
+                        icon       = panelIcon(panel.id),
+                        selected   = selectedId == panel.id,
+                        onClick    = { selectedId = panel.id }
                     )
                 }
             }
 
-            // Panel tabs
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                PanelTab(
-                    modifier = Modifier.weight(1f),
-                    label = "CONTACT",
-                    icon = Icons.Outlined.ContactPhone,
-                    selected = selectedPanel == QrPanel.CONTACT,
-                    onClick = { selectedPanel = QrPanel.CONTACT }
-                )
-                PanelTab(
-                    modifier = Modifier.weight(1f),
-                    label = "LINKEDIN",
-                    icon = Icons.Outlined.WorkOutline,
-                    selected = selectedPanel == QrPanel.LINKEDIN,
-                    onClick = { selectedPanel = QrPanel.LINKEDIN }
-                )
-                PanelTab(
-                    modifier = Modifier.weight(1f),
-                    label = "WHATSAPP",
-                    icon = Icons.Outlined.Chat,
-                    selected = selectedPanel == QrPanel.WHATSAPP,
-                    onClick = { selectedPanel = QrPanel.WHATSAPP }
-                )
-            }
+            Spacer(Modifier.height(20.dp))
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // QR Card
+            // QR display card
+            val activePanel = panels.first { it.id == selectedId }
             Box(
                 modifier = Modifier
                     .padding(horizontal = 24.dp)
@@ -149,17 +125,13 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = when (selectedPanel) {
-                            QrPanel.CONTACT  -> "YOUR CONTACT QR"
-                            QrPanel.LINKEDIN -> "YOUR LINKEDIN QR"
-                            QrPanel.WHATSAPP -> "YOUR WHATSAPP QR"
-                        },
+                        text = "YOUR ${activePanel.label} QR",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextSecondary
                     )
 
-                    when (selectedPanel) {
-                        QrPanel.CONTACT -> if (contactQr != null) {
+                    if (selectedId == "contact") {
+                        if (contactQr != null) {
                             Image(
                                 bitmap = contactQr.asImageBitmap(),
                                 contentDescription = "Contact QR",
@@ -171,44 +143,32 @@ fun HomeScreen(
                                 contentScale = ContentScale.FillWidth
                             )
                         } else EmptyQrState("No contact saved yet", "Tap Edit Identity to create your profile.")
-
-                        QrPanel.LINKEDIN -> if (savedLinkedinUri.isNotBlank()) {
+                    } else {
+                        val uri = savedUris[selectedId] ?: ""
+                        if (uri.isNotBlank()) {
                             Image(
-                                painter = rememberAsyncImagePainter(savedLinkedinUri),
-                                contentDescription = "LinkedIn QR",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp)),
+                                painter = rememberAsyncImagePainter(uri),
+                                contentDescription = "${activePanel.label} QR",
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
                                 contentScale = ContentScale.FillWidth
                             )
-                        } else EmptyQrState("No LinkedIn QR saved", "Tap Edit Identity to upload your LinkedIn QR.")
-
-                        QrPanel.WHATSAPP -> if (savedWhatsappUri.isNotBlank()) {
-                            Image(
-                                painter = rememberAsyncImagePainter(savedWhatsappUri),
-                                contentDescription = "WhatsApp QR",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.FillWidth
+                        } else {
+                            EmptyQrState(
+                                "No ${activePanel.label} QR saved",
+                                "Tap Edit Identity to upload your ${activePanel.label} QR."
                             )
-                        } else EmptyQrState("No WhatsApp QR saved", "Tap Edit Identity to upload your WhatsApp QR.")
+                        }
                     }
                 }
             }
         }
 
-        // Floating bottom bar
+        // Floating CTA
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Background),
-                        startY = 0f, endY = 80f
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Background), 0f, 80f))
                 .padding(horizontal = 24.dp, vertical = 20.dp)
         ) {
             Button(
@@ -217,8 +177,8 @@ fun HomeScreen(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
             ) {
-                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
                 Text("EDIT IDENTITY", style = MaterialTheme.typography.labelLarge, letterSpacing = 2.sp)
             }
         }
@@ -233,30 +193,22 @@ private fun PanelTab(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val bg by animateColorAsState(
-        if (selected) CopperContainer else SurfaceDark,
-        label = "tabBg"
-    )
-    val iconTint by animateColorAsState(
-        if (selected) Copper else TextTertiary,
-        label = "tabIcon"
-    )
-    val textColor by animateColorAsState(
-        if (selected) Copper else TextTertiary,
-        label = "tabText"
-    )
+    val bg         by animateColorAsState(if (selected) CopperContainer else SurfaceDark, label = "bg")
+    val iconTint   by animateColorAsState(if (selected) Copper else TextTertiary, label = "icon")
+    val textColor  by animateColorAsState(if (selected) Copper else TextTertiary, label = "text")
+    val borderCol  by animateColorAsState(if (selected) Copper.copy(alpha = 0.4f) else Border, label = "border")
 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(bg)
-            .border(1.dp, if (selected) Copper.copy(alpha = 0.4f) else Border, RoundedCornerShape(14.dp))
+            .border(1.dp, borderCol, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp))
         Text(label, style = MaterialTheme.typography.titleSmall, color = textColor, fontSize = 9.sp)
     }
 }
@@ -272,11 +224,17 @@ internal fun EmptyQrState(title: String, hint: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Icon(Icons.Outlined.QrCode2, contentDescription = null,
-            modifier = Modifier.size(48.dp), tint = Copper)
+        Icon(Icons.Outlined.QrCode2, null, modifier = Modifier.size(48.dp), tint = Copper)
         Text(title, style = MaterialTheme.typography.headlineSmall, color = TextPrimary, textAlign = TextAlign.Center)
         Text(hint, style = MaterialTheme.typography.bodySmall, color = TextSecondary, textAlign = TextAlign.Center)
     }
+}
+
+internal fun panelIcon(id: String): ImageVector = when (id) {
+    "contact"  -> Icons.Outlined.ContactPhone
+    "linkedin" -> Icons.Outlined.WorkOutline
+    "whatsapp" -> Icons.AutoMirrored.Outlined.Chat
+    else       -> Icons.Outlined.QrCode2
 }
 
 internal fun generateQr(content: String, size: Int = 900): Bitmap {
@@ -296,9 +254,11 @@ internal fun buildVCard(d: ContactDraft): String = buildList {
     if (d.phone.isNotBlank())       add("TEL;TYPE=CELL:${vc(d.phone)}")
     if (d.email.isNotBlank())       add("EMAIL:${vc(d.email)}")
     if (d.website.isNotBlank())     add("URL:${vc(d.website)}")
-    if (d.linkedinUrl.isNotBlank()) add("URL:${vc(d.linkedinUrl)}")
+    if (d.linkedinUrl.isNotBlank()) add("URL;TYPE=LINKEDIN:${vc(d.linkedinUrl)}")
     if (d.address.isNotBlank())     add("ADR:;;${vc(d.address)};;;;")
     add("END:VCARD")
 }.joinToString("\n")
 
-private fun vc(v: String) = v.replace("\\","\\\\").replace(";","\\;").replace(",","\\,").replace("\n","\\n")
+private fun vc(v: String) = v
+    .replace("\\", "\\\\").replace(";", "\\;")
+    .replace(",", "\\,").replace("\n", "\\n")

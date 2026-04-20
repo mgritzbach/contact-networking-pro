@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,7 +28,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,75 +38,63 @@ import com.antigravity.contactnetworkingpro.BuildConfig
 import com.antigravity.contactnetworkingpro.api.ClaudeVisionClient
 import com.antigravity.contactnetworkingpro.model.ContactDraft
 import com.antigravity.contactnetworkingpro.model.ContactDraftSaver
+import com.antigravity.contactnetworkingpro.model.PanelConfig
 import com.antigravity.contactnetworkingpro.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
 
-private enum class EditorTab { CONTACT, LINKEDIN, WHATSAPP }
-
 @Composable
 fun ContactEditorScreen(
+    panels: List<PanelConfig>,
     initialContact: ContactDraft,
-    savedLinkedinUri: String,
-    savedWhatsappUri: String,
+    savedUris: Map<String, String>,
     onSaveContact: (ContactDraft) -> Unit,
-    onSaveLinkedin: (String) -> Unit,
-    onSaveWhatsapp: (String) -> Unit,
+    onSaveUri: (panelId: String, uri: String) -> Unit,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    val scope   = rememberCoroutineScope()
+    val context  = LocalContext.current
+    val scope    = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    var activeTab by rememberSaveable { mutableStateOf(EditorTab.CONTACT) }
-    var draft    by rememberSaveable(stateSaver = ContactDraftSaver) { mutableStateOf(initialContact) }
-    var linkedinDraft by rememberSaveable { mutableStateOf(savedLinkedinUri) }
-    var whatsappDraft by rememberSaveable { mutableStateOf(savedWhatsappUri) }
+    var activeId    by rememberSaveable { mutableStateOf(panels.first().id) }
+    var draft       by rememberSaveable(stateSaver = ContactDraftSaver) { mutableStateOf(initialContact) }
+    var draftUris   by remember { mutableStateOf(savedUris.toMutableMap()) }
 
-    var isScanning by remember { mutableStateOf(false) }
-    var scanError  by remember { mutableStateOf<String?>(null) }
+    var isScanning  by remember { mutableStateOf(false) }
+    var scanError   by remember { mutableStateOf<String?>(null) }
 
-    // Camera for business card scanning
+    // Camera launcher
     val cameraUri = remember { mutableStateOf<Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
             val uri = cameraUri.value ?: return@rememberLauncherForActivityResult
             scope.launch {
-                isScanning = true
-                scanError  = null
+                isScanning = true; scanError = null
                 val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 if (bmp == null) { scanError = "Could not read photo."; isScanning = false; return@launch }
                 ClaudeVisionClient.scanBusinessCard(bmp, BuildConfig.ANTHROPIC_API_KEY)
-                    .onSuccess { result ->
-                        draft = result
-                        snackbar.showSnackbar("Card scanned — review and save.")
-                    }
-                    .onFailure { err ->
-                        scanError = err.message ?: "Scan failed."
-                        snackbar.showSnackbar("Scan failed: ${err.message}")
-                    }
+                    .onSuccess  { result -> draft = result; snackbar.showSnackbar("Card scanned — review and save.") }
+                    .onFailure  { err -> scanError = err.message; snackbar.showSnackbar("Scan failed: ${err.message}") }
                 isScanning = false
             }
         }
     }
 
-    // Image pickers for LinkedIn / WhatsApp
-    val linkedinPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) linkedinDraft = uri.toString()
-    }
-    val whatsappPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) whatsappDraft = uri.toString()
-    }
+    // Image pickers — one per non-contact panel
+    val imagePickers = panels
+        .filter { it.id != "contact" }
+        .associate { panel ->
+            panel.id to rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+                if (uri != null) draftUris = (draftUris + (panel.id to uri.toString())).toMutableMap()
+            }
+        }
 
     val liveQr = remember(draft) {
         if (draft.fullName.isBlank() && draft.phone.isBlank() && draft.email.isBlank()) null
         else generateQr(buildVCard(draft))
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        containerColor = Background
-    ) { innerPadding ->
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = Background) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
@@ -116,62 +102,45 @@ fun ContactEditorScreen(
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Copper top bar
                 Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(Copper))
 
                 // Top nav
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, null, tint = TextSecondary)
                     }
-                    Text(
-                        text = "YOUR IDENTITY",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Copper,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                    Text("YOUR IDENTITY", style = MaterialTheme.typography.titleMedium, color = Copper,
+                        modifier = Modifier.padding(start = 8.dp))
                 }
 
-                // Tab selector
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    listOf(
-                        Triple(EditorTab.CONTACT,  "CONTACT",  Icons.Outlined.ContactPhone),
-                        Triple(EditorTab.LINKEDIN, "LINKEDIN", Icons.Outlined.WorkOutline),
-                        Triple(EditorTab.WHATSAPP, "WHATSAPP", Icons.AutoMirrored.Outlined.Chat)
-                    ).forEach { (tab, label, icon) ->
-                        val sel = activeTab == tab
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) CopperContainer else Color.Transparent)
-                                .clickable { activeTab = tab }
-                                .padding(vertical = 10.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(icon, null, tint = if (sel) Copper else TextTertiary, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(label, style = MaterialTheme.typography.titleSmall,
-                                color = if (sel) Copper else TextTertiary, fontSize = 9.sp)
-                        }
+                // Tab row — scrollable if > 3 panels
+                val scrollMod = if (panels.size > 3)
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp).horizontalScroll(rememberScrollState())
+                else
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+
+                Row(modifier = scrollMod, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    panels.forEach { panel ->
+                        val w = if (panels.size <= 3) Modifier.weight(1f) else Modifier.width(90.dp)
+                        EditorTab(
+                            modifier = w,
+                            label    = panel.label,
+                            icon     = panelIcon(panel.id),
+                            selected = activeId == panel.id,
+                            onClick  = { activeId = panel.id }
+                        )
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                when (activeTab) {
-                    EditorTab.CONTACT -> ContactTab(
+                val activePanel = panels.first { it.id == activeId }
+
+                if (activeId == "contact") {
+                    ContactTab(
                         draft = draft,
                         onDraftChange = { draft = it },
                         liveQr = liveQr,
@@ -180,36 +149,27 @@ fun ContactEditorScreen(
                         onScanClick = {
                             val file = File(context.cacheDir, "camera_photos").also { it.mkdirs() }
                                 .let { File(it, "business_card.jpg") }
-                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                            cameraUri.value = uri
-                            cameraLauncher.launch(uri)
+                            cameraUri.value = FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", file)
+                            cameraLauncher.launch(cameraUri.value!!)
                         },
                         onSave = {
                             onSaveContact(draft)
                             scope.launch { snackbar.showSnackbar("Contact saved.") }
                         }
                     )
-                    EditorTab.LINKEDIN -> QrImageTab(
-                        title = "LinkedIn QR",
-                        hint = "Open LinkedIn → Your QR code → screenshot it, then upload.",
-                        packageName = "com.linkedin.android",
-                        draftUri = linkedinDraft,
-                        onPickImage = { linkedinPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                } else {
+                    val picker = imagePickers[activeId]
+                    QrImageTab(
+                        panelLabel = activePanel.label,
+                        hint       = qrHint(activePanel),
+                        packageName = knownPackage(activePanel.id),
+                        draftUri   = draftUris[activeId] ?: "",
+                        onPickImage = { picker?.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         onSave = {
-                            onSaveLinkedin(linkedinDraft)
-                            scope.launch { snackbar.showSnackbar("LinkedIn QR saved.") }
-                        },
-                        context = context
-                    )
-                    EditorTab.WHATSAPP -> QrImageTab(
-                        title = "WhatsApp QR",
-                        hint = "Open WhatsApp → Settings → QR code → screenshot it, then upload.",
-                        packageName = "com.whatsapp",
-                        draftUri = whatsappDraft,
-                        onPickImage = { whatsappPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        onSave = {
-                            onSaveWhatsapp(whatsappDraft)
-                            scope.launch { snackbar.showSnackbar("WhatsApp QR saved.") }
+                            val uri = draftUris[activeId] ?: return@QrImageTab
+                            onSaveUri(activeId, uri)
+                            scope.launch { snackbar.showSnackbar("${activePanel.label} QR saved.") }
                         },
                         context = context
                     )
@@ -219,15 +179,10 @@ fun ContactEditorScreen(
             }
 
             // Scanning overlay
-            AnimatedVisibility(
-                visible = isScanning,
-                enter = fadeIn(), exit = fadeOut(),
-                modifier = Modifier.fillMaxSize()
-            ) {
+            AnimatedVisibility(visible = isScanning, enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Background.copy(alpha = 0.94f)),
+                    modifier = Modifier.fillMaxSize().background(Background.copy(alpha = 0.94f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -236,16 +191,37 @@ fun ContactEditorScreen(
                     ) {
                         CircularProgressIndicator(color = Copper, strokeWidth = 3.dp, modifier = Modifier.size(48.dp))
                         Text("READING CARD", style = MaterialTheme.typography.titleLarge, color = Copper)
-                        Text(
-                            "Claude is extracting your\ncontact details…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("Claude is extracting your\ncontact details…",
+                            style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+                            textAlign = TextAlign.Center)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EditorTab(
+    modifier: Modifier = Modifier,
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) CopperContainer else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = if (selected) Copper else TextTertiary, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(label, style = MaterialTheme.typography.titleSmall,
+            color = if (selected) Copper else TextTertiary, fontSize = 9.sp)
     }
 }
 
@@ -263,7 +239,6 @@ private fun ContactTab(
         modifier = Modifier.padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Scan business card CTA
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -275,63 +250,48 @@ private fun ContactTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = Copper, modifier = Modifier.size(28.dp))
+            Icon(Icons.Outlined.CameraAlt, null, tint = Copper, modifier = Modifier.size(28.dp))
             Column {
                 Text("SCAN BUSINESS CARD", style = MaterialTheme.typography.titleMedium, color = Copper)
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "Point camera at a card · AI fills the form",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                Text("Point camera at a card · AI fills the form",
+                    style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
         }
 
-        if (scanError != null) {
+        if (scanError != null)
             Text("⚠ $scanError", style = MaterialTheme.typography.bodySmall, color = ErrorRed)
-        }
 
         HorizontalDivider(color = Divider)
 
-        // Form fields
-        LuxuryField(draft.fullName,    { onDraftChange(draft.copy(fullName    = it)) }, "Full name",     Icons.Outlined.PersonOutline)
-        LuxuryField(draft.jobTitle,    { onDraftChange(draft.copy(jobTitle    = it)) }, "Job title",     Icons.Outlined.WorkOutline)
-        LuxuryField(draft.company,     { onDraftChange(draft.copy(company     = it)) }, "Company",       Icons.Outlined.Business)
-        LuxuryField(draft.phone,       { onDraftChange(draft.copy(phone       = it)) }, "Phone",         Icons.Outlined.PhoneAndroid,  KeyboardType.Phone)
-        LuxuryField(draft.email,       { onDraftChange(draft.copy(email       = it)) }, "Email",         Icons.Outlined.MailOutline,   KeyboardType.Email)
-        LuxuryField(draft.website,     { onDraftChange(draft.copy(website     = it)) }, "Website",       Icons.Outlined.Language,      KeyboardType.Uri)
-        LuxuryField(draft.linkedinUrl, { onDraftChange(draft.copy(linkedinUrl = it)) }, "LinkedIn URL",  Icons.Outlined.WorkOutline,   KeyboardType.Uri)
+        LuxuryField(draft.fullName,    { onDraftChange(draft.copy(fullName    = it)) }, "Full name",    Icons.Outlined.PersonOutline)
+        LuxuryField(draft.jobTitle,    { onDraftChange(draft.copy(jobTitle    = it)) }, "Job title",    Icons.Outlined.WorkOutline)
+        LuxuryField(draft.company,     { onDraftChange(draft.copy(company     = it)) }, "Company",      Icons.Outlined.Business)
+        LuxuryField(draft.phone,       { onDraftChange(draft.copy(phone       = it)) }, "Phone",        Icons.Outlined.PhoneAndroid, KeyboardType.Phone)
+        LuxuryField(draft.email,       { onDraftChange(draft.copy(email       = it)) }, "Email",        Icons.Outlined.MailOutline,  KeyboardType.Email)
+        LuxuryField(draft.website,     { onDraftChange(draft.copy(website     = it)) }, "Website",      Icons.Outlined.Language,     KeyboardType.Uri)
+        LuxuryField(draft.linkedinUrl, { onDraftChange(draft.copy(linkedinUrl = it)) }, "LinkedIn URL", Icons.Outlined.WorkOutline,  KeyboardType.Uri)
 
         OutlinedTextField(
-            value = draft.address,
-            onValueChange = { onDraftChange(draft.copy(address = it)) },
+            value = draft.address, onValueChange = { onDraftChange(draft.copy(address = it)) },
             label = { Text("Address", color = TextTertiary) },
             leadingIcon = { Icon(Icons.Outlined.LocationOn, null, tint = TextTertiary) },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 2,
-            colors = luxuryFieldColors()
+            modifier = Modifier.fillMaxWidth(), minLines = 2, colors = luxuryFieldColors()
         )
 
         HorizontalDivider(color = Divider)
 
-        // Live QR preview
         if (liveQr != null) {
             Text("PREVIEW", style = MaterialTheme.typography.titleSmall, color = TextSecondary)
-            Image(
+            androidx.compose.foundation.Image(
                 bitmap = liveQr.asImageBitmap(),
-                contentDescription = "Live QR preview",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .padding(10.dp),
+                contentDescription = "Live QR",
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(Color.White).padding(10.dp),
                 contentScale = ContentScale.FillWidth
             )
-        } else {
-            EmptyQrState("Add name, phone or email", "A live QR preview will appear here.")
-        }
+        } else EmptyQrState("Add name, phone or email", "A live QR preview will appear here.")
 
-        // Save button
         Button(
             onClick = onSave,
             modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -347,9 +307,9 @@ private fun ContactTab(
 
 @Composable
 private fun QrImageTab(
-    title: String,
+    panelLabel: String,
     hint: String,
-    packageName: String,
+    packageName: String?,
     draftUri: String,
     onPickImage: () -> Unit,
     onSave: () -> Unit,
@@ -362,17 +322,18 @@ private fun QrImageTab(
         Text(hint, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = {
-                    context.packageManager.getLaunchIntentForPackage(packageName)
-                        ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                        ?.let { context.startActivity(it) }
-                },
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, Copper.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Copper)
-            ) { Text("OPEN APP", style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp) }
-
+            if (packageName != null) {
+                OutlinedButton(
+                    onClick = {
+                        context.packageManager.getLaunchIntentForPackage(packageName)
+                            ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            ?.let { context.startActivity(it) }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Copper.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Copper)
+                ) { Text("OPEN APP", style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp) }
+            }
             Button(
                 onClick = onPickImage,
                 shape = RoundedCornerShape(10.dp),
@@ -385,45 +346,40 @@ private fun QrImageTab(
         }
 
         if (draftUri.isBlank()) {
-            EmptyQrState("No QR uploaded yet", "Upload a screenshot of your $title.")
+            EmptyQrState("No QR uploaded yet", "Upload a screenshot of your $panelLabel QR.")
         } else {
-            Image(
+            androidx.compose.foundation.Image(
                 painter = rememberAsyncImagePainter(draftUri),
-                contentDescription = "$title preview",
+                contentDescription = "$panelLabel QR",
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.FillWidth
             )
         }
 
         Button(
-            onClick = onSave,
-            enabled = draftUri.isNotBlank(),
+            onClick = onSave, enabled = draftUri.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
         ) {
             Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
-            Text("SAVE $title".uppercase(), style = MaterialTheme.typography.labelLarge, letterSpacing = 2.sp)
+            Text("SAVE $panelLabel", style = MaterialTheme.typography.labelLarge, letterSpacing = 2.sp)
         }
     }
 }
 
 @Composable
 private fun LuxuryField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    icon: ImageVector,
+    value: String, onValueChange: (String) -> Unit,
+    label: String, icon: ImageVector,
     keyboardType: KeyboardType = KeyboardType.Text
 ) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = value, onValueChange = onValueChange,
         label = { Text(label, color = TextTertiary) },
-        leadingIcon = { Icon(icon, contentDescription = null, tint = TextTertiary) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
+        leadingIcon = { Icon(icon, null, tint = TextTertiary) },
+        modifier = Modifier.fillMaxWidth(), singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = luxuryFieldColors()
     )
@@ -440,3 +396,15 @@ private fun luxuryFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor        = TextPrimary,
     unfocusedTextColor      = TextPrimary
 )
+
+private fun qrHint(panel: PanelConfig) = when (panel.id) {
+    "linkedin" -> "Open LinkedIn → Your QR code → screenshot, then upload here."
+    "whatsapp" -> "Open WhatsApp → Settings → QR code → screenshot, then upload here."
+    else       -> "Open ${panel.label}, find your QR code, screenshot it, then upload here."
+}
+
+private fun knownPackage(id: String) = when (id) {
+    "linkedin" -> "com.linkedin.android"
+    "whatsapp" -> "com.whatsapp"
+    else       -> null
+}
