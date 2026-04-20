@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -63,28 +64,9 @@ fun HomeScreen(
             Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp)) {
                 Text("CONTACT NETWORKING PRO", style = MaterialTheme.typography.titleMedium, color = Copper)
                 Spacer(Modifier.height(12.dp))
-                if (savedContact.fullName.isNotBlank()) {
-                    Text(
-                        text = savedContact.fullName,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (savedContact.jobTitle.isNotBlank() || savedContact.company.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = listOf(savedContact.jobTitle, savedContact.company)
-                                .filter { it.isNotBlank() }.joinToString(" · "),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
-                        )
-                    }
-                } else {
-                    Text("Share Your\nIdentity", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Professional networking, elevated.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
+                Text("Share Your\nIdentity", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+                Spacer(Modifier.height(8.dp))
+                Text("Professional networking, elevated.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
 
             // Dynamic panel tabs — scrollable row if count > 3
