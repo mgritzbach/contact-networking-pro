@@ -45,7 +45,8 @@ object ClaudeVisionClient {
                                     put("text", """
                                         Extract contact information from this business card.
                                         Return ONLY a valid JSON object — no markdown, no explanation — with exactly these keys:
-                                        fullName, jobTitle, company, phone, email, website, linkedinUrl, address.
+                                        fullName, jobTitle, company, phoneMobile, phoneWork, email, website, linkedinUrl, address.
+                                        phoneMobile = personal/mobile number, phoneWork = office/work number.
                                         Use an empty string "" for any field not found on the card.
                                     """.trimIndent())
                                 })
@@ -82,7 +83,8 @@ object ClaudeVisionClient {
                     fullName    = obj.optString("fullName"),
                     jobTitle    = obj.optString("jobTitle"),
                     company     = obj.optString("company"),
-                    phone       = obj.optString("phone"),
+                    phoneMobile = obj.optString("phoneMobile"),
+                    phoneWork   = obj.optString("phoneWork"),
                     email       = obj.optString("email"),
                     website     = obj.optString("website"),
                     linkedinUrl = obj.optString("linkedinUrl"),

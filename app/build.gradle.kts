@@ -19,8 +19,8 @@ android {
         applicationId = "com.antigravity.contactnetworkingpro"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 7
+        versionName = "1.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
             "String",
@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.zxing.core)
+    implementation(libs.mlkit.textrecognition)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

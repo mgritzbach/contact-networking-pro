@@ -20,31 +20,33 @@ class ContactStorage(context: Context) {
 
     // ── Contact ────────────────────────────────────────────────────────────────
     fun loadContact() = ContactDraft(
-        fullName    = prefs.getString("c_name",    "") ?: "",
-        jobTitle    = prefs.getString("c_title",   "") ?: "",
-        company     = prefs.getString("c_company", "") ?: "",
-        phone       = prefs.getString("c_phone",   "") ?: "",
-        email       = prefs.getString("c_email",   "") ?: "",
-        website     = prefs.getString("c_website", "") ?: "",
-        linkedinUrl = prefs.getString("c_linkedin","") ?: "",
-        address     = prefs.getString("c_address", "") ?: ""
+        fullName    = prefs.getString("c_name",         "") ?: "",
+        jobTitle    = prefs.getString("c_title",        "") ?: "",
+        company     = prefs.getString("c_company",      "") ?: "",
+        phoneMobile = prefs.getString("c_phone_mobile", "") ?: "",
+        phoneWork   = prefs.getString("c_phone_work",   "") ?: "",
+        email       = prefs.getString("c_email",        "") ?: "",
+        website     = prefs.getString("c_website",      "") ?: "",
+        linkedinUrl = prefs.getString("c_linkedin",     "") ?: "",
+        address     = prefs.getString("c_address",      "") ?: ""
     )
 
     fun saveContact(d: ContactDraft) {
         prefs.edit()
-            .putString("c_name",    d.fullName)
-            .putString("c_title",   d.jobTitle)
-            .putString("c_company", d.company)
-            .putString("c_phone",   d.phone)
-            .putString("c_email",   d.email)
-            .putString("c_website", d.website)
-            .putString("c_linkedin",d.linkedinUrl)
-            .putString("c_address", d.address)
+            .putString("c_name",         d.fullName)
+            .putString("c_title",        d.jobTitle)
+            .putString("c_company",      d.company)
+            .putString("c_phone_mobile", d.phoneMobile)
+            .putString("c_phone_work",   d.phoneWork)
+            .putString("c_email",        d.email)
+            .putString("c_website",      d.website)
+            .putString("c_linkedin",     d.linkedinUrl)
+            .putString("c_address",      d.address)
             .apply()
     }
 
-    // ── QR image URIs (panel id → URI string) ──────────────────────────────────
-    fun loadPanelUri(panelId: String): String = prefs.getString("uri_$panelId", "") ?: ""
-    fun savePanelUri(panelId: String, uri: String) =
-        prefs.edit().putString("uri_$panelId", uri).apply()
+    // ── QR content strings (panel id → decoded QR text) ───────────────────────
+    fun loadPanelQrContent(panelId: String): String = prefs.getString("qr_$panelId", "") ?: ""
+    fun savePanelQrContent(panelId: String, content: String) =
+        prefs.edit().putString("qr_$panelId", content).apply()
 }
