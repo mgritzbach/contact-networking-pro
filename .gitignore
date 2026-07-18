@@ -9,6 +9,8 @@
 *.apk.idsig
 /preview.html
 /captures
+/output
+/.playwright-cli
 .externalNativeBuild
 .cxx
 *.keystore

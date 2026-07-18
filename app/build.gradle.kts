@@ -1,32 +1,20 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) load(f.inputStream())
-}
-
 android {
     namespace = "com.antigravity.contactnetworkingpro"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.antigravity.contactnetworkingpro"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 7
-        versionName = "1.7"
+        targetSdk = 36
+        versionCode = 8
+        versionName = "1.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField(
-            "String",
-            "ANTHROPIC_API_KEY",
-            "\"${localProps.getProperty("ANTHROPIC_API_KEY", "")}\""
-        )
     }
 
     buildTypes {
@@ -61,12 +49,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
-    implementation(libs.camera.core)
-    implementation(libs.camera.camera2)
-    implementation(libs.camera.lifecycle)
-    implementation(libs.camera.view)
-    implementation(libs.okhttp)
-    implementation(libs.coil.compose)
     implementation(libs.zxing.core)
     implementation(libs.mlkit.textrecognition)
     testImplementation(libs.junit)

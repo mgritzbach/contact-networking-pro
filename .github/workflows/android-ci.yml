@@ -24,7 +24,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Test and build debug APK
+      - name: Test, lint, and build
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest assembleDebug --stacktrace
+          ./gradlew testDebugUnitTest lintDebug assembleDebug bundleRelease --stacktrace

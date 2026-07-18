@@ -63,7 +63,7 @@ fun ContactEditorScreen(
     var draft     by rememberSaveable(stateSaver = ContactDraftSaver) { mutableStateOf(initialContact) }
 
     // For non-contact panels: draft QR content strings (decoded from uploaded images)
-    var draftQrContents by remember { mutableStateOf(savedQrContents.toMutableMap()) }
+    var draftQrContents by remember { mutableStateOf(savedQrContents) }
     // Track decode state per panel
     var decodingPanel   by remember { mutableStateOf<String?>(null) }
     var decodeErrors    by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -87,7 +87,7 @@ fun ContactEditorScreen(
                         }
                         val content = withContext(Dispatchers.Default) { decodeQr(bmp) }
                         if (content != null) {
-                            draftQrContents = (draftQrContents + (panel.id to content)).toMutableMap()
+                            draftQrContents = draftQrContents + (panel.id to content)
                         } else {
                             decodeErrors = decodeErrors + (panel.id to
                                 "No QR code found. Upload the original app screenshot — not a photo of a screen.")
@@ -124,7 +124,7 @@ fun ContactEditorScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, null, tint = TextSecondary)
                 }
-                Text("YOUR IDENTITY", style = MaterialTheme.typography.titleMedium, color = Copper,
+                Text("EDIT PROFILE", style = MaterialTheme.typography.titleMedium, color = Copper,
                     modifier = Modifier.padding(start = 8.dp))
             }
 
@@ -200,7 +200,7 @@ private fun EditorTab(
         Icon(icon, null, tint = if (selected) Copper else TextTertiary, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(5.dp))
         Text(label, style = MaterialTheme.typography.titleSmall,
-            color = if (selected) Copper else TextTertiary, fontSize = 9.sp)
+            color = if (selected) Copper else TextTertiary, fontSize = 11.sp)
     }
 }
 
@@ -268,7 +268,7 @@ private fun ContactTab(
 
         Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
+            colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = Background)
         ) {
             Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
@@ -361,7 +361,7 @@ private fun QrContentTab(
             onClick = onSave, enabled = qrContent.isNotBlank() && !isDecoding,
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
+            colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = Background)
         ) {
             Icon(Icons.Outlined.Save, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))

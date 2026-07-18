@@ -49,4 +49,12 @@ class ContactStorage(context: Context) {
     fun loadPanelQrContent(panelId: String): String = prefs.getString("qr_$panelId", "") ?: ""
     fun savePanelQrContent(panelId: String, content: String) =
         prefs.edit().putString("qr_$panelId", content).apply()
+
+    fun getQuickAccessPanelId(): String =
+        prefs.getString("quick_access_panel", "contact") ?: "contact"
+
+    fun saveQuickAccessPanelId(panelId: String) =
+        prefs.edit().putString("quick_access_panel", panelId).apply()
+
+    fun clearAll() = prefs.edit().clear().apply()
 }

@@ -7,6 +7,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.content.ComponentName
+import android.service.quicksettings.TileService
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -34,6 +37,7 @@ import com.antigravity.contactnetworkingpro.model.ContactDraft
 import com.antigravity.contactnetworkingpro.model.buildPanelList
 import com.antigravity.contactnetworkingpro.ui.*
 import com.antigravity.contactnetworkingpro.ui.theme.*
+import com.antigravity.contactnetworkingpro.widget.QrWidgetProvider
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -41,6 +45,7 @@ private sealed class Screen {
     object Intro  : Screen()
     object Home   : Screen()
     object Editor : Screen()
+    object Settings : Screen()
     class ScanReview(val result: ScanResult, val forOwnProfile: Boolean) : Screen()
 }
 
@@ -73,6 +78,7 @@ private fun ContactNetworkingApp() {
     }
 
     var savedContact by remember { mutableStateOf(storage.loadContact()) }
+    var quickAccessPanelId by remember { mutableStateOf(storage.getQuickAccessPanelId()) }
     var editorPrefill by remember { mutableStateOf<ContactDraft?>(null) }
     var savedQrContents by remember {
         mutableStateOf(panels.filter { it.id != "contact" }
@@ -83,6 +89,7 @@ private fun ContactNetworkingApp() {
     var isScanning    by remember { mutableStateOf(false) }
     var scanMode      by remember { mutableStateOf(ScanMode.ForOther) }
     val scanCameraUri = remember { mutableStateOf<Uri?>(null) }
+    val scanCameraFile = remember { mutableStateOf<File?>(null) }
     var triggerCamera by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -93,17 +100,26 @@ private fun ContactNetworkingApp() {
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (!success) return@rememberLauncherForActivityResult
+        if (!success) {
+            scanCameraFile.value?.delete()
+            scanCameraFile.value = null
+            return@rememberLauncherForActivityResult
+        }
         val uri = scanCameraUri.value ?: return@rememberLauncherForActivityResult
         scope.launch {
             isScanning = true
             val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             if (bmp == null) {
                 isScanning = false
+                scanCameraFile.value?.delete()
+                scanCameraFile.value = null
                 snackbar.showSnackbar("Could not read photo.")
                 return@launch
             }
-            CardScanner.scanBusinessCard(bmp)
+            val result = CardScanner.scanBusinessCard(bmp)
+            scanCameraFile.value?.delete()
+            scanCameraFile.value = null
+            result
                 .onSuccess { result ->
                     isScanning = false
                     screen = Screen.ScanReview(result, forOwnProfile = scanMode == ScanMode.ForOwnProfile)
@@ -120,6 +136,7 @@ private fun ContactNetworkingApp() {
             triggerCamera = false
             val file = File(context.cacheDir, "camera_photos").also { it.mkdirs() }
                 .let { File(it, "card_scan.jpg") }
+            scanCameraFile.value = file
             scanCameraUri.value = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", file)
             cameraLauncher.launch(scanCameraUri.value!!)
@@ -132,6 +149,7 @@ private fun ContactNetworkingApp() {
             == PackageManager.PERMISSION_GRANTED) {
             val file = File(context.cacheDir, "camera_photos").also { it.mkdirs() }
                 .let { File(it, "card_scan.jpg") }
+            scanCameraFile.value = file
             scanCameraUri.value = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", file)
             cameraLauncher.launch(scanCameraUri.value!!)
@@ -140,19 +158,33 @@ private fun ContactNetworkingApp() {
         }
     }
 
+    fun refreshQuickAccess() {
+        QrWidgetProvider.updateAll(context)
+        TileService.requestListeningState(context, ComponentName(context, QrTileService::class.java))
+    }
+
+    BackHandler(enabled = screen != Screen.Home && screen != Screen.Intro) {
+        editorPrefill = null
+        screen = when (screen) {
+            is Screen.ScanReview -> if ((screen as Screen.ScanReview).forOwnProfile) Screen.Editor else Screen.Home
+            else -> Screen.Home
+        }
+    }
+
     // ── Navigation ─────────────────────────────────────────────────────────────
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = Background) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
 
             when (val s = screen) {
-                Screen.Intro -> IntroScreen(onComplete = { count, names ->
+                Screen.Intro -> IntroScreen(onComplete = {
+                    val count = 3
+                    val names = listOf("", "")
                     storage.savePanelCount(count)
-                    names.forEachIndexed { i, n -> storage.saveCustomPanelName(i, n) }
                     storage.markSetupComplete()
                     panels = buildPanelList(count, names)
                     savedQrContents = panels.filter { it.id != "contact" }
                         .associate { it.id to storage.loadPanelQrContent(it.id) }
-                    screen = Screen.Home
+                    screen = Screen.Editor
                 })
 
                 Screen.Home -> HomeScreen(
@@ -160,7 +192,43 @@ private fun ContactNetworkingApp() {
                     savedContact    = savedContact,
                     savedQrContents = savedQrContents,
                     onEditClick     = { screen = Screen.Editor },
-                    onScanCardClick = { launchCamera(ScanMode.ForOther) }
+                    onScanCardClick = { launchCamera(ScanMode.ForOther) },
+                    onSettingsClick = { screen = Screen.Settings }
+                )
+
+                Screen.Settings -> SettingsScreen(
+                    panelCount = storage.getPanelCount(),
+                    customNames = listOf(storage.getCustomPanelName(0), storage.getCustomPanelName(1)),
+                    panels = panels,
+                    quickAccessPanelId = quickAccessPanelId,
+                    onSavePanels = { count, names ->
+                        storage.savePanelCount(count)
+                        names.forEachIndexed { index, name -> storage.saveCustomPanelName(index, name) }
+                        panels = buildPanelList(count, names)
+                        if (panels.none { it.id == quickAccessPanelId }) {
+                            quickAccessPanelId = "contact"
+                            storage.saveQuickAccessPanelId("contact")
+                        }
+                        savedQrContents = panels.filter { it.id != "contact" }
+                            .associate { it.id to storage.loadPanelQrContent(it.id) }
+                        refreshQuickAccess()
+                    },
+                    onQuickAccessPanelSelected = { panelId ->
+                        quickAccessPanelId = panelId
+                        storage.saveQuickAccessPanelId(panelId)
+                        refreshQuickAccess()
+                    },
+                    onResetData = {
+                        storage.clearAll()
+                        savedContact = ContactDraft()
+                        editorPrefill = null
+                        quickAccessPanelId = "contact"
+                        panels = buildPanelList(3, listOf("", ""))
+                        savedQrContents = panels.filter { it.id != "contact" }.associate { it.id to "" }
+                        refreshQuickAccess()
+                        screen = Screen.Intro
+                    },
+                    onBack = { screen = Screen.Home }
                 )
 
                 Screen.Editor -> ContactEditorScreen(
@@ -171,10 +239,12 @@ private fun ContactNetworkingApp() {
                         savedContact  = draft
                         editorPrefill = null
                         storage.saveContact(draft)
+                        refreshQuickAccess()
                     },
                     onSaveQrContent = { panelId, content ->
                         savedQrContents = savedQrContents + (panelId to content)
                         storage.savePanelQrContent(panelId, content)
+                        refreshQuickAccess()
                     },
                     onScanMyCard    = { launchCamera(ScanMode.ForOwnProfile) },
                     onBack          = { editorPrefill = null; screen = Screen.Home }

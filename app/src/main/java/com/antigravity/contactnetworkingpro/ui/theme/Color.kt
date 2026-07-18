@@ -15,7 +15,7 @@ val CopperContainer   = Color(0xFF1E120A)
 
 val TextPrimary       = Color(0xFFFFFFFF)
 val TextSecondary     = Color(0xFF9A9590)
-val TextTertiary      = Color(0xFF555050)
+val TextTertiary      = Color(0xFF817B76)   // 4.68:1 against Background
 val Border            = Color(0xFF252525)
 val Divider           = Color(0xFF1E1E1E)
 val ErrorRed          = Color(0xFFCF6679)

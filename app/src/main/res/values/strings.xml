@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Contact Networking Pro</string>
+    <string name="widget_name">Contact QR</string>
+    <string name="widget_description">Show a selected networking QR or a quick presentation shortcut.</string>
+    <string name="widget_qr_content_description">Selected networking QR code</string>
+    <string name="widget_shortcut_content_description">Open selected networking QR</string>
+    <string name="quick_tile_label">Contact QR</string>
+    <string name="widget_default_title">CONTACT</string>
+    <string name="widget_default_hint">Tap for full screen</string>
 </resources>

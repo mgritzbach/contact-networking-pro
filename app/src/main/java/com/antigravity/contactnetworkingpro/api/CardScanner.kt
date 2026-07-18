@@ -20,11 +20,14 @@ object CardScanner {
             runCatching {
                 val image = InputImage.fromBitmap(bitmap, 0)
                 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                val mlText = suspendCancellableCoroutine { cont ->
-                    recognizer.process(image)
-                        .addOnSuccessListener { cont.resume(it) }
-                        .addOnFailureListener { cont.resumeWithException(it) }
-                    cont.invokeOnCancellation { recognizer.close() }
+                val mlText = try {
+                    suspendCancellableCoroutine { cont ->
+                        recognizer.process(image)
+                            .addOnSuccessListener { cont.resume(it) }
+                            .addOnFailureListener { cont.resumeWithException(it) }
+                    }
+                } finally {
+                    recognizer.close()
                 }
                 parse(mlText.text)
             }

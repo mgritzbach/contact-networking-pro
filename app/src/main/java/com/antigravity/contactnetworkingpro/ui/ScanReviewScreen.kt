@@ -117,7 +117,7 @@ fun ScanReviewScreen(
                         onClick = { onConfirm(draft) },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = Background)
                     ) {
                         Icon(
                             if (forOwnProfile) Icons.Outlined.Save else Icons.Outlined.PersonAdd,
