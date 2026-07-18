@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,10 +31,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.rememberAsyncImagePainter
 import com.antigravity.contactnetworkingpro.model.ContactDraft
 import com.antigravity.contactnetworkingpro.model.PanelConfig
 import com.antigravity.contactnetworkingpro.ui.theme.*
+import com.antigravity.contactnetworkingpro.vcard.VCardSerializer
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -41,14 +43,39 @@ import com.google.zxing.qrcode.QRCodeWriter
 fun HomeScreen(
     panels: List<PanelConfig>,
     savedContact: ContactDraft,
-    savedUris: Map<String, String>,
-    onEditClick: () -> Unit
+    savedQrContents: Map<String, String>,
+    onEditClick: () -> Unit,
+    onScanCardClick: () -> Unit = {}
 ) {
     var selectedId by remember(panels) { mutableStateOf(panels.first().id) }
 
-    val contactQr = remember(savedContact) {
-        if (savedContact.fullName.isBlank() && savedContact.phone.isBlank() && savedContact.email.isBlank()) null
-        else generateQr(buildVCard(savedContact))
+    // All QR bitmaps generated internally — no image loading, no URIs, no permissions.
+    // Key: panelId → Bitmap. Regenerated whenever the source data changes.
+    var qrBitmaps by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
+
+    LaunchedEffect(savedContact) {
+        val hasContact = listOf(savedContact.fullName, savedContact.jobTitle, savedContact.company,
+            savedContact.phoneMobile, savedContact.phoneWork, savedContact.email,
+            savedContact.website, savedContact.linkedinUrl).any { it.isNotBlank() }
+        val bmp = if (hasContact) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                generateQr(VCardSerializer.serialize(savedContact))
+            }
+        } else null
+        qrBitmaps = if (bmp != null) qrBitmaps + ("contact" to bmp) else qrBitmaps - "contact"
+    }
+
+    LaunchedEffect(savedQrContents) {
+        savedQrContents.forEach { (panelId, content) ->
+            if (content.isNotBlank()) {
+                val bmp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    generateQr(content)
+                }
+                qrBitmaps = qrBitmaps + (panelId to bmp)
+            } else {
+                qrBitmaps = qrBitmaps - panelId
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Background)) {
@@ -63,28 +90,9 @@ fun HomeScreen(
             Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp)) {
                 Text("CONTACT NETWORKING PRO", style = MaterialTheme.typography.titleMedium, color = Copper)
                 Spacer(Modifier.height(12.dp))
-                if (savedContact.fullName.isNotBlank()) {
-                    Text(
-                        text = savedContact.fullName,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = TextPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (savedContact.jobTitle.isNotBlank() || savedContact.company.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = listOf(savedContact.jobTitle, savedContact.company)
-                                .filter { it.isNotBlank() }.joinToString(" · "),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
-                        )
-                    }
-                } else {
-                    Text("Share Your\nIdentity", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Professional networking, elevated.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                }
+                Text("Share Your\nIdentity", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+                Spacer(Modifier.height(8.dp))
+                Text("Professional networking, elevated.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
 
             // Dynamic panel tabs — scrollable row if count > 3
@@ -130,40 +138,31 @@ fun HomeScreen(
                         color = TextSecondary
                     )
 
-                    if (selectedId == "contact") {
-                        if (contactQr != null) {
-                            Image(
-                                bitmap = contactQr.asImageBitmap(),
-                                contentDescription = "Contact QR",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White)
-                                    .padding(12.dp),
-                                contentScale = ContentScale.FillWidth
-                            )
-                        } else EmptyQrState("No contact saved yet", "Tap Edit Identity to create your profile.")
+                    val bitmap = qrBitmaps[selectedId]
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "${activePanel.label} QR",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .padding(12.dp),
+                            contentScale = ContentScale.FillWidth
+                        )
+                    } else if (selectedId == "contact") {
+                        EmptyQrState("No contact saved yet", "Tap My Identity to create your profile.")
                     } else {
-                        val uri = savedUris[selectedId] ?: ""
-                        if (uri.isNotBlank()) {
-                            Image(
-                                painter = rememberAsyncImagePainter(uri),
-                                contentDescription = "${activePanel.label} QR",
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.FillWidth
-                            )
-                        } else {
-                            EmptyQrState(
-                                "No ${activePanel.label} QR saved",
-                                "Tap Edit Identity to upload your ${activePanel.label} QR."
-                            )
-                        }
+                        EmptyQrState(
+                            "No ${activePanel.label} QR saved",
+                            "Tap My Identity → ${activePanel.label} tab → upload your QR screenshot."
+                        )
                     }
                 }
             }
         }
 
-        // Floating CTA
+        // Floating CTAs
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -171,15 +170,27 @@ fun HomeScreen(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Background), 0f, 80f))
                 .padding(horizontal = 24.dp, vertical = 20.dp)
         ) {
-            Button(
-                onClick = onEditClick,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
-            ) {
-                Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("EDIT IDENTITY", style = MaterialTheme.typography.labelLarge, letterSpacing = 2.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onScanCardClick,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark, contentColor = Copper)
+                ) {
+                    Icon(Icons.Outlined.CameraAlt, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("SCAN CARD", style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp)
+                }
+                Button(
+                    onClick = onEditClick,
+                    modifier = Modifier.weight(1f).height(56.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Copper, contentColor = TextPrimary)
+                ) {
+                    Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("MY IDENTITY", style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp)
+                }
             }
         }
     }
@@ -245,20 +256,3 @@ internal fun generateQr(content: String, size: Int = 900): Bitmap {
         bmp.setPixel(x, y, if (matrix[x, y]) AColor.BLACK else AColor.WHITE)
     return bmp
 }
-
-internal fun buildVCard(d: ContactDraft): String = buildList {
-    add("BEGIN:VCARD"); add("VERSION:3.0")
-    if (d.fullName.isNotBlank())    add("FN:${vc(d.fullName)}")
-    if (d.company.isNotBlank())     add("ORG:${vc(d.company)}")
-    if (d.jobTitle.isNotBlank())    add("TITLE:${vc(d.jobTitle)}")
-    if (d.phone.isNotBlank())       add("TEL;TYPE=CELL:${vc(d.phone)}")
-    if (d.email.isNotBlank())       add("EMAIL:${vc(d.email)}")
-    if (d.website.isNotBlank())     add("URL:${vc(d.website)}")
-    if (d.linkedinUrl.isNotBlank()) add("URL;TYPE=LINKEDIN:${vc(d.linkedinUrl)}")
-    if (d.address.isNotBlank())     add("ADR:;;${vc(d.address)};;;;")
-    add("END:VCARD")
-}.joinToString("\n")
-
-private fun vc(v: String) = v
-    .replace("\\", "\\\\").replace(";", "\\;")
-    .replace(",", "\\,").replace("\n", "\\n")

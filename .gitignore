@@ -4,6 +4,10 @@
 /.idea
 .DS_Store
 /build
+/app/build
+*.apk
+*.apk.idsig
+/preview.html
 /captures
 .externalNativeBuild
 .cxx
